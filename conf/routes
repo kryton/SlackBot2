@@ -1,0 +1,22 @@
+# Routes
+# This file defines all application routes (Higher priority routes first)
+# ~~~~
+
+# Home page
+GET        /                          controllers.Application.index
+GET        /IM                        controllers.Application.IMstart
+GET        /config                    controllers.Application.slackGetConfig
+GET        /start                     controllers.Application.slackStart
+GET        /end                       controllers.Application.slackEnd
+GET        /channels                  controllers.Application.slackChannels
+GET        /users                     controllers.Application.slackUsers
+GET        /send/:channel/:msg        controllers.Application.slackSend(channel:String, msg:String)
+GET        /sm/start                  controllers.Application.startSM()
+GET        /sm/:id                    controllers.Application.incident(id)
+GET        /sm/:days/:pri             controllers.Application.incidentList(days:Int,pri:Int)
+GET         /Shopping                 controllers.Application.shoppingBotStart
+
+
+# Map static resources from the /public folder to the /assets URL path
+GET        /assets/*file              controllers.Assets.at(path="/public", file)
+
