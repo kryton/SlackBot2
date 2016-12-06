@@ -21,7 +21,7 @@ import scala.concurrent.duration._
 class SlackAPIActor @Inject()(configuration: Configuration)(implicit ec: ExecutionContext) extends Actor with ActorLogging {
 
   import SlackAPIActor._
-
+  implicit val system:ActorSystem = context.system
   implicit val timeout: Timeout = 5.seconds
   val apiKey: String = configuration.getString("slack.config.key").getOrElse("none")
   val duration: FiniteDuration = 5.seconds
@@ -31,8 +31,8 @@ class SlackAPIActor @Inject()(configuration: Configuration)(implicit ec: Executi
   }
   def receive: Receive = {
     case Start =>
-      val apiClient = BlockingSlackApiClient(apiKey, duration)
 
+      val apiClient = BlockingSlackApiClient(apiKey, duration)
       val state = RtmState(apiClient.startRealTimeMessageSession())
       val slackActor = SlackRtmConnectionActor(apiKey, state, duration)
       slackActor ! AddEventListener(self)
