@@ -27,6 +27,7 @@ class ShoppingBotActor @Inject()(@Named("SlackAPI-actor") slackAPIActor: ActorRe
   // TODO convert this into a 'bot manager' with individual sessions handled by individual bots.
   implicit val timeout: Timeout = 15.seconds
 
+
   override def preStart(): Unit = {
     super.preStart()
     self ! Start

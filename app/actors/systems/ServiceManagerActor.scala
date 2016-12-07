@@ -28,7 +28,6 @@ class ServiceManagerActor  @Inject() (configuration: Configuration)(implicit ec:
   }
   def receive: Receive = {
     case Start =>
-
       val apiClient = ServiceManagerAPI(user,password, url, duration)
       context.become(receiveStarted( apiClient))
     case GetConfig =>
@@ -37,8 +36,11 @@ class ServiceManagerActor  @Inject() (configuration: Configuration)(implicit ec:
       log.error("Not started.. attempting to start now")
       self ! Start
       self.tell(e,sender )
+    case OpenP1P2 =>
+      self ! Start
+      self.tell( OpenP1P2, sender)
     case _ =>
-      log.error("Unknown Message")
+      log.error("Unknown Message (receive)")
 
   }
   def receiveStarted(apiClient:ServiceManagerAPI) :Receive = {
@@ -54,8 +56,11 @@ class ServiceManagerActor  @Inject() (configuration: Configuration)(implicit ec:
     case l:IncidentList =>
       val senderActor = sender()
       apiClient.getList(l.days,l.maxPri).map( senderActor ! _)
+    case OpenP1P2 =>
+      val senderActor = sender()
+      apiClient.getList(99,1, true).map( senderActor !_)
     case _ =>
-      log.error("Unknown message")
+      log.error("Unknown message (receiveStarted)")
 
   }
 }
@@ -68,6 +73,7 @@ object ServiceManagerActor  {
   //case object End extends ServiceManagerMessage
   //case object GetConfig extends ServiceManagerMessage
   case object P1P2ThisWeek extends ServiceManagerMessage
+  case object OpenP1P2 extends ServiceManagerMessage
   case object P1ThisWeek extends ServiceManagerMessage
   case class Incident( incidentID:String) extends ServiceManagerMessage
   case class IncidentList( days:Int, maxPri:Int) extends ServiceManagerMessage

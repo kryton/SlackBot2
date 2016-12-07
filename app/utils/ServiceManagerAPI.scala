@@ -125,7 +125,7 @@ class ServiceManagerAPI(protected val user: String,
   }
   lazy val   sm = new SimpleDateFormat("yyy-MM-dd")
 
-  def getList(days:Int, maxPri: Int): Future[Seq[String]] = {
+  def getList(days:Int, maxPri: Int, openOnly:Boolean = false ): Future[Seq[String]] = {
     val now = Calendar.getInstance()
     now.add(Calendar.DAY_OF_MONTH,-days)
     val sinceStr =sm.format( now.getTime)
@@ -136,6 +136,7 @@ class ServiceManagerAPI(protected val user: String,
 
     val qry: Uri.Query = Uri.Query("query" -> queryForWeekByPriority)
     val uri = Uri(s"$url$incidentsForWeekByPriority").withQuery(qry)
+    log.warn(uri.toString())
 
     val request = HttpRequest(HttpMethods.GET, uri = uri, headers = List(authHeader))
 
@@ -165,7 +166,6 @@ class ServiceManagerAPI(protected val user: String,
           Future(Seq.empty)
       }
     }.flatMap(identity)
-
   }
 
 }
