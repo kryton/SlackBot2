@@ -1,4 +1,4 @@
-package actors.systems
+package slack.rtm
 
 import javax.inject._
 
@@ -9,8 +9,8 @@ import akka.util.Timeout
 import play.api.Configuration
 import slack.api.BlockingSlackApiClient
 import slack.models.{Attachment, SlackEvent}
-import slack.rtm.SlackRtmConnectionActor.AddEventListener
-import slack.rtm.{RtmState, SlackRtmConnectionActor}
+import SlackRtmConnectionActor.AddEventListener
+//import slack.rtm.{RtmState, SlackRtmConnectionActor}
 
 import scala.concurrent.ExecutionContext
 import scala.concurrent.duration._

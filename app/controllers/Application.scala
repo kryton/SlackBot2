@@ -3,13 +3,14 @@ package controllers
 import javax.inject._
 
 import actors.BotMessages.{End, GetConfig, Start}
-import actors.systems.{ServiceManagerActor, SlackAPIActor}
+import actors.systems.ServiceManagerActor
 import akka.actor.ActorRef
 import akka.http.scaladsl.model.DateTime
 import akka.pattern.ask
 import akka.util.Timeout
 import play.api.mvc._
 import slack.models.Channel
+import slack.rtm.SlackAPIActor
 import utils.{IncidentDetail, ServiceManagerAPI}
 
 import scala.concurrent.duration._

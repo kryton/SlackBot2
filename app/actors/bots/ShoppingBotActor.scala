@@ -4,13 +4,14 @@ import javax.inject.{Inject, Named}
 
 import actors.BotMessages.{BotMessages, Start}
 import actors.systems.DRActor.{ApplyBillingAddress, CategoryDetail, CategoryList, NewUserSessionReply}
-import actors.systems.SlackAPIActor.AddUserChannelListener
-import actors.systems.{DRActor, SlackAPIActor}
+import slack.rtm.SlackAPIActor.AddUserChannelListener
+import actors.systems.DRActor
 import akka.actor.{Actor, ActorLogging, ActorRef, Props}
 import akka.pattern.ask
 import akka.util.Timeout
 import play.api.Configuration
 import slack.models.{ActionField, Attachment}
+import slack.rtm.SlackAPIActor
 import utils.{Cart, DRAPI}
 
 import scala.concurrent.ExecutionContext

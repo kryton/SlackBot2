@@ -4,11 +4,12 @@ import javax.inject.{Inject, Named}
 
 import actors.BotMessages.{BotMessages, Start}
 import actors.systems
-import actors.systems.{ServiceManagerActor, SlackAPIActor}
+import actors.systems.{ServiceManagerActor}
 import akka.actor.{Actor, ActorLogging, ActorRef, Props}
 import akka.pattern.ask
 import akka.util.Timeout
 import play.api.Configuration
+import slack.rtm.SlackAPIActor
 import utils.IncidentDetail
 
 import scala.concurrent.ExecutionContext
@@ -41,12 +42,12 @@ class IncidentActor @Inject()(@Named("SlackAPI-actor") slackAPIActor: ActorRef,
       msg.text match {
         case IMpattern(incident) =>
           (serviceManagerActor ? ServiceManagerActor.Incident(incident)).mapTo[Option[IncidentDetail]].map {
-            case None =>  slackAPIActor ! systems.SlackAPIActor.SendMessage(msg.channel, s"$incident - Incident Not found")
+            case None =>  slackAPIActor ! SlackAPIActor.SendMessage(msg.channel, s"$incident - Incident Not found")
             case Some(i: IncidentDetail) =>
-              slackAPIActor ! systems.SlackAPIActor.SendMessage(msg.channel, s"${i.IncidentID} - ${i.Title}\n${i.Description.foldLeft("")(_+_.getOrElse("")+"\n")}")
+              slackAPIActor ! SlackAPIActor.SendMessage(msg.channel, s"${i.IncidentID} - ${i.Title}\n${i.Description.foldLeft("")(_+_.getOrElse("")+"\n")}")
           }
 
-        case _ => slackAPIActor ! systems.SlackAPIActor.SendMessage(msg.channel, s"I don't understand -  ${msg.text}")
+        case _ => slackAPIActor ! SlackAPIActor.SendMessage(msg.channel, s"I don't understand -  ${msg.text}")
       }
     }
   }
