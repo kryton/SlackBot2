@@ -47,15 +47,15 @@ class ShoppingBotActor @Inject()(@Named("SlackAPI-actor") slackAPIActor: ActorRe
     if (msg.text.startsWith("!")) {
       msg.text match {
         case msgText if msgText.toLowerCase.contains("session") =>
-          (drActor ? DRActor.NewUserSession("Slack", msg.user)).mapTo[NewUserSessionReply].map { s: NewUserSessionReply =>
+          (drActor ? DRActor.NewUserSession("Slack", msg.userID)).mapTo[NewUserSessionReply].map { s: NewUserSessionReply =>
             if (s.worked) {
-              val shoppingBotActorUser = context.actorOf(Props(new ShoppingBotActorUser(slackAPIActor, s.sessionActor, msg.channel, msg.user)), s"ShoppingBotUserActor_${msg.channel}_${msg.user}")
+              val shoppingBotActorUser = context.actorOf(Props(new ShoppingBotActorUser(slackAPIActor, s.sessionActor, msg.channelID, msg.userID)), s"ShoppingBotUserActor_${msg.channelID}_${msg.userID}")
               shoppingBotActorUser ! Start
               context.watch(shoppingBotActorUser)
               log.info(s"Session returned - ${s.worked}")
 
             } else {
-              slackAPIActor ! SlackAPIActor.SendMessage(msg.channel, "I couldn't get a session token")
+              slackAPIActor ! SlackAPIActor.SendMessage(msg.channelID, "I couldn't get a session token")
             }
           }
         case msgText if msgText.contains("test") =>
@@ -63,17 +63,17 @@ class ShoppingBotActor @Inject()(@Named("SlackAPI-actor") slackAPIActor: ActorRe
           val attachment = Attachment(text = Some("Do you want to accept?"),
             fallback = Some("backup message: code-123456"),
             callback_id = Some("code-123456"), actions = actionField)
-          slackAPIActor ! SlackAPIActor.SendAttachment(msg.channel, text="Test",attachments = Seq(attachment))
+          slackAPIActor ! SlackAPIActor.SendAttachment(msg.channelID, text="Test",attachments = Seq(attachment))
         case msgText if msgText.toLowerCase.contains("categories") =>
 
           (drActor ? DRActor.GetCategories(None)).mapTo[Either[CategoryDetail,CategoryList]].map { e: Either[CategoryDetail, CategoryList] =>
             log.info("GetCategories - Got Response!")
            if ( e.isLeft) {
-             slackAPIActor ! SlackAPIActor.SendMessage( msg.channel, e.left.get.category.displayName)
+             slackAPIActor ! SlackAPIActor.SendMessage( msg.channelID, e.left.get.category.displayName)
            } else {
              val categoryList = e.right.get.categories
              val attachments:Seq[Attachment] = categoryList.map{ cl => Attachment( text = Some(cl.displayName)) }
-             slackAPIActor ! SlackAPIActor.SendAttachment(msg.channel, text="Categories",attachments = attachments)
+             slackAPIActor ! SlackAPIActor.SendAttachment(msg.channelID, text="Categories",attachments = attachments)
            }
 
           }
@@ -81,7 +81,7 @@ class ShoppingBotActor @Inject()(@Named("SlackAPI-actor") slackAPIActor: ActorRe
         case msgText if msgText.toLowerCase.contains("addzip") => {}
         case msgText if msgText.toLowerCase.contains("additem") => {}
         case msgText if msgText.toLowerCase.contains("checkout") => {}
-        case _ => slackAPIActor ! SlackAPIActor.SendMessage(msg.channel,s"I don't understand ${msg.text}")
+        case _ => slackAPIActor ! SlackAPIActor.SendMessage(msg.channelID,s"I don't understand ${msg.text}")
       }
     }
   }
@@ -123,10 +123,10 @@ class ShoppingBotActorUser (slackAPIActor: ActorRef,
           (drActorUser ?  DRActor.GetCart).mapTo[Option[Cart]].map {
             case Some(cart: Cart) =>
               log.info("Cart returned")
-              slackAPIActor ! SlackAPIActor.SendMessage(msg.channel, s"Cart  ${cart.id} - Items ${cart.totalItemsInCart} - ${cart.businessEntityCode} - Total ${cart.pricing.formattedOrderTotal}")
+              slackAPIActor ! SlackAPIActor.SendMessage(msg.channelID, s"Cart  ${cart.id} - Items ${cart.totalItemsInCart} - ${cart.businessEntityCode} - Total ${cart.pricing.formattedOrderTotal}")
             case None =>
               log.info("No Cart returned")
-              slackAPIActor ! SlackAPIActor.SendMessage(msg.channel, "Something went wrong.")
+              slackAPIActor ! SlackAPIActor.SendMessage(msg.channelID, "Something went wrong.")
           }
         } else {
           if (msg.text.contains("addzip")) {
@@ -136,12 +136,12 @@ class ShoppingBotActorUser (slackAPIActor: ActorRef,
                 (drActorUser ?  ApplyBillingAddress(zip, country)).mapTo[Option[Cart]].map {
                   case Some(cart: Cart) =>
                     log.info("Cart returned")
-                    slackAPIActor ! SlackAPIActor.SendMessage(msg.channel, s"Cart ${cart.id} - Items ${cart.totalItemsInCart} - ${cart.businessEntityCode} - Total ${cart.pricing.formattedOrderTotal}")
+                    slackAPIActor ! SlackAPIActor.SendMessage(msg.channelID, s"Cart ${cart.id} - Items ${cart.totalItemsInCart} - ${cart.businessEntityCode} - Total ${cart.pricing.formattedOrderTotal}")
                   case None =>
                     log.info("No Cart returned")
-                    slackAPIActor ! SlackAPIActor.SendMessage(msg.channel, "Something went wrong.")
+                    slackAPIActor ! SlackAPIActor.SendMessage(msg.channelID, "Something went wrong.")
                 }
-              case _ => slackAPIActor ! SlackAPIActor.SendMessage(msg.channel, "Usage\n! addzip 55555 US")
+              case _ => slackAPIActor ! SlackAPIActor.SendMessage(msg.channelID, "Usage\n! addzip 55555 US")
             }
           } else {
             if (msg.text.contains("additem")) {
@@ -164,24 +164,24 @@ class ShoppingBotActorUser (slackAPIActor: ActorRef,
                 (drActorUser ? DRActor.AddProduct(rr.get.ps, rr.get.p, rr.get.q)).mapTo[Option[Cart]].map {
                   case Some(cart: Cart) =>
                     log.info("Add Product returned")
-                    slackAPIActor ! SlackAPIActor.SendMessage(msg.channel, s"Cart ${cart.id} - Items ${cart.totalItemsInCart} - ${cart.businessEntityCode} - Total ${cart.pricing.formattedOrderTotal}")
+                    slackAPIActor ! SlackAPIActor.SendMessage(msg.channelID, s"Cart ${cart.id} - Items ${cart.totalItemsInCart} - ${cart.businessEntityCode} - Total ${cart.pricing.formattedOrderTotal}")
                   case None =>
                     log.info("Add Product Failed")
-                    slackAPIActor ! SlackAPIActor.SendMessage(msg.channel, "Something went wrong.")
+                    slackAPIActor ! SlackAPIActor.SendMessage(msg.channelID, "Something went wrong.")
                 }
               } else {
                 log.error("Invalid response.. ! addItem sku [quantity] [promocode] ")
-                slackAPIActor ! SlackAPIActor.SendMessage(msg.channel, "Invalid response.. ! addItem sku [quantity] [promocode] ")
+                slackAPIActor ! SlackAPIActor.SendMessage(msg.channelID, "Invalid response.. ! addItem sku [quantity] [promocode] ")
               }
             } else {
               if ( msg.text.contains("checkout")) {
                 (drActorUser ?  DRActor.GetCheckoutURL).mapTo[Option[String]].map {
                   case Some(cart: String) =>
                     log.info("Checkout returned")
-                    slackAPIActor ! SlackAPIActor.SendMessage(msg.channel, s"Please Click $cart")
+                    slackAPIActor ! SlackAPIActor.SendMessage(msg.channelID, s"Please Click $cart")
                   case None =>
                     log.info("No checkout returned")
-                    slackAPIActor ! SlackAPIActor.SendMessage(msg.channel, "Something went wrong.")
+                    slackAPIActor ! SlackAPIActor.SendMessage(msg.channelID, "Something went wrong.")
                 }
               } else {
 

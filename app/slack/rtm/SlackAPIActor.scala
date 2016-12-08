@@ -8,7 +8,7 @@ import akka.pattern.ask
 import akka.util.Timeout
 import play.api.Configuration
 import slack.api.BlockingSlackApiClient
-import slack.models.{Attachment, SlackEvent}
+import slack.models.{Attachment, Channel, SlackEvent}
 import SlackRtmConnectionActor.AddEventListener
 //import slack.rtm.{RtmState, SlackRtmConnectionActor}
 
@@ -82,9 +82,9 @@ class SlackAPIActor @Inject()(configuration: Configuration)(implicit ec: Executi
     case s: SlackEvent =>
       log.warning(s"Slack Event ${s.getClass}")
     case m: SendMessage =>
-      slackActor.ask(SlackRtmConnectionActor.SendMessage(m.channel, m.text))(sender = sender(), timeout = timeout)
+      slackActor.ask(SlackRtmConnectionActor.SendMessage(m.channelID, m.text))(sender = sender(), timeout = timeout)
     case a: SendAttachment =>
-      apiClient.postChatMessage( channelId = a.channel, text= a.text, attachments = Some(a.attachments))
+      apiClient.postChatMessage( channelId = a.channelID, text= a.text, attachments = Some(a.attachments))
     case Channels =>
       sender() ! apiClient.listChannels(1)
     case Users =>
@@ -101,7 +101,7 @@ class SlackAPIActor @Inject()(configuration: Configuration)(implicit ec: Executi
       context.become( receiveStarted(slackActor,apiClient, listeners + a.actor, channelUserListen,reverseChanelUserListen))
     case a:AddUserChannelListener =>
       context.watch( a.actor)
-      context.become( receiveStarted(slackActor, apiClient, listeners,channelUserListen + ((a.channel,a.user)-> a.actor), reverseChanelUserListen + (a.actor->(a.channel,a.user))))
+      context.become( receiveStarted(slackActor, apiClient, listeners,channelUserListen + ((a.channel,a.userID)-> a.actor), reverseChanelUserListen + (a.actor->(a.channel,a.userID))))
     case Terminated(actor) =>
       val oCU:Option[(String,String)] = reverseChanelUserListen.get(actor)
       oCU match {
@@ -115,23 +115,31 @@ class SlackAPIActor @Inject()(configuration: Configuration)(implicit ec: Executi
         case None =>context.become( receiveStarted(slackActor,apiClient, listeners - a.actor, channelUserListen,reverseChanelUserListen))
         case Some(x)=> context.become( receiveStarted(slackActor,apiClient, listeners - a.actor,channelUserListen - x,reverseChanelUserListen - a.actor))
       }
+    case InviteUser(channelName, userID) =>
+      val channels:Map[String,Channel] = apiClient.listChannels().map( x => x.id -> x).toMap
+      channels.get(channelName) match {
+        case Some(channel) =>
+          apiClient.inviteToChannel(channel.id,userID)
+        case None => val IMChannel = apiClient.openIm(userID)
+          self ! SendMessage(IMChannel,"I can't find that channel name")
+      }
     case _ =>
       log.error("Unknown message")
   }
-
-
 }
 
 
 object SlackAPIActor {
   def props( configuration: Configuration)(implicit ec: ExecutionContext) : Props = Props(classOf[SlackAPIActor], configuration)
   sealed trait SlackAPIMessage extends BotMessages
-  case class SendMessage(channel: String, text: String) extends SlackAPIMessage
-  case class SendAttachment(channel: String, text:String, attachments: Seq[Attachment]) extends SlackAPIMessage
-  case class RecvMessage(user:String, channel: String, ts:String, text: String) extends SlackAPIMessage
+  case class SendMessage(channelID: String, text: String) extends SlackAPIMessage
+  case class SendAttachment(channelID: String, text:String, attachments: Seq[Attachment]) extends SlackAPIMessage
+  case class RecvMessage(userID:String, channelID: String, ts:String, text: String) extends SlackAPIMessage
   case class AddListener(actor:ActorRef)extends SlackAPIMessage
-  case class AddUserChannelListener(actor:ActorRef, user:String, channel:String)extends SlackAPIMessage
+  case class AddUserChannelListener(actor:ActorRef, userID:String, channel:String)extends SlackAPIMessage
   case class RemoveListener(actor:ActorRef)extends SlackAPIMessage
+  case class JoinAndCreate(channelName:String)extends SlackAPIMessage
+  case class InviteUser(channelName:String, userID:String) extends SlackAPIMessage
 
   case object Channels extends SlackAPIMessage
   case object Users extends SlackAPIMessage

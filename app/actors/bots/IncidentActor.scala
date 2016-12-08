@@ -50,7 +50,7 @@ class IncidentActor @Inject()(@Named("SlackAPI-actor") slackAPIActor: ActorRef,
           val incidentSeq:Seq[IncidentDetail] = incidentSeqO.flatten
           val actionField = Seq(
             ActionField("open", "Open/Goto Channel", "button", Some("primary")),
-            ActionField("detail", "Detail", "button", ),
+            ActionField("detail", "Detail", "button" ),
             ActionField("assign", "AssignToMe", "button")
           )
           val attachments: Seq[Attachment] = incidentSeq.map { incident: IncidentDetail =>
@@ -59,7 +59,7 @@ class IncidentActor @Inject()(@Named("SlackAPI-actor") slackAPIActor: ActorRef,
               callback_id = Some(s"IM-Open-${incident.IncidentID}"), actions = actionField)
           }
           log.error("Sending it to Slack")
-          slackAPIActor ! SlackAPIActor.SendAttachment( channel = mainChannelID, text = "Open P1/P2 Incidents", attachments = attachments)
+          slackAPIActor ! SlackAPIActor.SendAttachment( channelID = mainChannelID, text = "Open P1/P2 Incidents", attachments = attachments)
       }
 
       log.error("TICK")
@@ -72,12 +72,12 @@ class IncidentActor @Inject()(@Named("SlackAPI-actor") slackAPIActor: ActorRef,
       msg.text match {
         case IMpattern(incident) =>
           (serviceManagerActor ? ServiceManagerActor.Incident(incident)).mapTo[Option[IncidentDetail]].map {
-            case None =>  slackAPIActor ! SlackAPIActor.SendMessage(msg.channel, s"$incident - Incident Not found")
+            case None =>  slackAPIActor ! SlackAPIActor.SendMessage(msg.channelID, s"$incident - Incident Not found")
             case Some(i: IncidentDetail) =>
-              slackAPIActor ! SlackAPIActor.SendMessage(msg.channel, s"${i.IncidentID} - ${i.Title}\n${i.Description.foldLeft("")(_+_.getOrElse("")+"\n")}")
+              slackAPIActor ! SlackAPIActor.SendMessage(msg.channelID, s"${i.IncidentID} - ${i.Title}\n${i.Description.foldLeft("")(_+_.getOrElse("")+"\n")}")
           }
 
-        case _ => slackAPIActor ! SlackAPIActor.SendMessage(msg.channel, s"I don't understand -  ${msg.text}")
+        case _ => slackAPIActor ! SlackAPIActor.SendMessage(msg.channelID, s"I don't understand -  ${msg.text}")
       }
     }
   }

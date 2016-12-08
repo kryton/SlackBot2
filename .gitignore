@@ -16,3 +16,6 @@ dist
 /conf/secret.conf
 /conf/secret.conf.docker
 /cert
+/play
+/play.cmd
+/conf/generated.keystore
