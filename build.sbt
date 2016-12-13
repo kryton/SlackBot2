@@ -23,7 +23,7 @@ libraryDependencies ++= Seq( javaJdbc ,  cache , javaWs,
   "com.typesafe.akka" %% "akka-http-core" % akkaHttpVersion,
   "com.typesafe.akka" %% "akka-http" % akkaHttpVersion,
   "com.typesafe.akka" %% "akka-http-spray-json" % akkaHttpVersion,
-  "com.github.gilbertw1" %% "slack-scala-client" % "0.2.0-SNAPSHOT")
+  "com.github.gilbertw1" %% "slack-scala-client" % "0.2.0")
 
 unmanagedResourceDirectories in Test <+=  baseDirectory ( _ /"target/web/public/test" )  
 
