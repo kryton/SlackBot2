@@ -9,10 +9,10 @@
     </appender>
 
     <appender name="roller" class="ch.qos.logback.core.rolling.RollingFileAppender">
-        <file>/pic/logs/offlineV2.log</file>
+        <file>logs/offlineV2.log</file>
         <append>true</append>
         <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
-            <fileNamePattern>/pic/logs/offlineV2.%d{yyyy-MM-dd}.log</fileNamePattern>
+            <fileNamePattern>logs/offlineV2.%d{yyyy-MM-dd}.log</fileNamePattern>
             <maxHistory>30</maxHistory>
         </rollingPolicy>
 

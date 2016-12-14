@@ -13,6 +13,7 @@ dist
 /.project
 /RUNNING_PID
 /.settings
+/conf/logback.xml
 /conf/secret.conf
 /conf/secret.conf.docker
 /cert
