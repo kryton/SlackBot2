@@ -7,9 +7,11 @@ import akka.actor._
 import akka.pattern.ask
 import akka.util.Timeout
 import play.api.Configuration
-import slack.api.BlockingSlackApiClient
+import slack.api.{AccessToken, BlockingSlackApiClient, SlackApiClient}
 import slack.models.{Attachment, Channel, SlackEvent}
 import SlackRtmConnectionActor.AddEventListener
+
+import scala.concurrent.Await
 //import slack.rtm.{RtmState, SlackRtmConnectionActor}
 
 import scala.concurrent.ExecutionContext
@@ -31,12 +33,12 @@ class SlackAPIActor @Inject()(configuration: Configuration)(implicit ec: Executi
   }
   def receive: Receive = {
     case Start =>
-
       val apiClient = BlockingSlackApiClient(apiKey, duration)
       val state = RtmState(apiClient.startRealTimeMessageSession())
       val slackActor = SlackRtmConnectionActor(apiKey, state, duration)
       slackActor ! AddEventListener(self)
       context.become(receiveStarted(slackActor, apiClient,Set.empty,Map.empty,Map.empty))
+
     case a:AddListener =>
       val apiClient = BlockingSlackApiClient(apiKey, duration)
       val state = RtmState(apiClient.startRealTimeMessageSession())
@@ -52,6 +54,20 @@ class SlackAPIActor @Inject()(configuration: Configuration)(implicit ec: Executi
     case Users =>
       val apiClient = BlockingSlackApiClient(apiKey, duration)
       sender() ! apiClient.listUsers()
+    case NewBlockingApi(newApiToken:String) =>
+      val newApi = BlockingSlackApiClient(newApiToken, duration)
+      val newState = RtmState(newApi.startRealTimeMessageSession())
+      val newSlackActor = SlackRtmConnectionActor(newApiToken, newState, duration)
+
+      newSlackActor ! AddEventListener(self)
+      context.watch(self)
+      context.become( receiveStarted(newSlackActor,newApi, Set.empty,Map.empty,Map.empty))
+    case  SwitchToNewAPI( clientId: String, clientSecret:String, code:String, redirectUri:Option[String]) =>
+      SlackApiClient.exchangeOauthForToken(clientId, clientSecret, code, redirectUri).map { token:AccessToken =>
+        log.info("Switched to New API token")
+        self ! NewBlockingApi(token.access_token)
+      }
+
     case _ =>
       log.error("Can't do that in this state")
   }
@@ -123,6 +139,18 @@ class SlackAPIActor @Inject()(configuration: Configuration)(implicit ec: Executi
         case None => val IMChannel = apiClient.openIm(userID)
           self ! SendMessage(IMChannel,"I can't find that channel name")
       }
+    case  SwitchToNewAPI( clientId: String, clientSecret:String, code:String, redirectUri:Option[String]) =>
+      SlackApiClient.exchangeOauthForToken(clientId, clientSecret, code, redirectUri).map { token:AccessToken =>
+        self ! NewBlockingApi(token.access_token)
+      }
+
+    case NewBlockingApi(newApiToken:String) =>
+      val newApi = BlockingSlackApiClient(newApiToken, duration)
+      val newState = RtmState(newApi.startRealTimeMessageSession())
+      val newSlackActor = SlackRtmConnectionActor(newApiToken, newState, duration)
+      slackActor ! PoisonPill
+
+      context.become(receiveStarted(newSlackActor, newApi, listeners, channelUserListen, reverseChanelUserListen))
     case _ =>
       log.error("Unknown message")
   }
@@ -140,6 +168,8 @@ object SlackAPIActor {
   case class RemoveListener(actor:ActorRef)extends SlackAPIMessage
   case class JoinAndCreate(channelName:String)extends SlackAPIMessage
   case class InviteUser(channelName:String, userID:String) extends SlackAPIMessage
+  case class NewBlockingApi( apiToken: String) extends SlackAPIMessage
+  case class SwitchToNewAPI( clientId: String, clientSecret:String, code:String, redirectURI:Option[String])
 
   case object Channels extends SlackAPIMessage
   case object Users extends SlackAPIMessage
