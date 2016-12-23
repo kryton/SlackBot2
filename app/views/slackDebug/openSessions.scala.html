@@ -1,0 +1,11 @@
+@(teams: Seq[String])
+
+@main("config") {
+
+<h1>ADMIN ONLY</h1>
+<h2>Slack List of teams - TODO: MAKE ADMIN ONLY</h2>
+    @teams.map { team =>
+        <li>@team</li>
+    }
+
+}

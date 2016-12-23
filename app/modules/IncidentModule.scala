@@ -26,9 +26,6 @@ class IncidentModule extends AbstractModule with AkkaGuiceSupport {
 
 class IncidentScheduler @Inject()(val system: ActorSystem, @Named("Incident-actor") val incidentActor: ActorRef)(implicit ec: ExecutionContext)
 {
-  system.scheduler.schedule(   0.microseconds, 1.minutes, incidentActor,IncidentActor.Tick)
+ // system.scheduler.schedule(   0.microseconds, 1.minutes, incidentActor,IncidentActor.Tick)
 
-  /*
-  system.scheduler.schedule( 30.minutes, 30.days, incidentActor, "clean")
-    */
 }

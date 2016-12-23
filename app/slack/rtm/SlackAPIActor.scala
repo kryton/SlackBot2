@@ -10,6 +10,7 @@ import play.api.Configuration
 import slack.api.{AccessToken, BlockingSlackApiClient, SlackApiClient}
 import slack.models.{Attachment, Channel, SlackEvent}
 import SlackRtmConnectionActor.AddEventListener
+import play.api.libs.json.JsValue
 
 import scala.concurrent.Await
 //import slack.rtm.{RtmState, SlackRtmConnectionActor}
@@ -20,13 +21,13 @@ import scala.concurrent.duration._
 /**
   * Created by iholsman on 10/28/2016.
   */
-class SlackAPIActor @Inject()(configuration: Configuration)(implicit ec: ExecutionContext) extends Actor with ActorLogging {
+class SlackAPIActor (apiKey:String ) extends Actor with ActorLogging {
 
   import SlackAPIActor._
   implicit val system:ActorSystem = context.system
   implicit val timeout: Timeout = 5.seconds
-  val apiKey: String = configuration.getString("slack.config.key").getOrElse("none")
   val duration: FiniteDuration = 5.seconds
+
   override def preStart(): Unit = {
     super.preStart()
     self ! Start
@@ -47,26 +48,18 @@ class SlackAPIActor @Inject()(configuration: Configuration)(implicit ec: Executi
       context.watch(a.actor)
       context.become( receiveStarted(slackActor,apiClient, Set(a.actor),Map.empty,Map.empty))
 
-
     case Channels =>
       val apiClient = BlockingSlackApiClient(apiKey, duration)
       sender() ! apiClient.listChannels(1)
     case Users =>
       val apiClient = BlockingSlackApiClient(apiKey, duration)
       sender() ! apiClient.listUsers()
-    case NewBlockingApi(newApiToken:String) =>
-      val newApi = BlockingSlackApiClient(newApiToken, duration)
-      val newState = RtmState(newApi.startRealTimeMessageSession())
-      val newSlackActor = SlackRtmConnectionActor(newApiToken, newState, duration)
 
-      newSlackActor ! AddEventListener(self)
-      context.watch(self)
-      context.become( receiveStarted(newSlackActor,newApi, Set.empty,Map.empty,Map.empty))
-    case  SwitchToNewAPI( clientId: String, clientSecret:String, code:String, redirectUri:Option[String]) =>
-      SlackApiClient.exchangeOauthForToken(clientId, clientSecret, code, redirectUri).map { token:AccessToken =>
-        log.info("Switched to New API token")
-        self ! NewBlockingApi(token.access_token)
-      }
+    case TeamName =>
+      val apiClient = BlockingSlackApiClient(apiKey, duration)
+      val teamInfo: JsValue = apiClient.getTeamInfo()
+      val teamNameResponse = TeamNameResponse ( (teamInfo \ "team" \ "id").as[String],(teamInfo\ "team" \ "name").as[String], (teamInfo\ "team" \ "domain").as[String])
+      sender() ! teamNameResponse
 
     case _ =>
       log.error("Can't do that in this state")
@@ -139,26 +132,23 @@ class SlackAPIActor @Inject()(configuration: Configuration)(implicit ec: Executi
         case None => val IMChannel = apiClient.openIm(userID)
           self ! SendMessage(IMChannel,"I can't find that channel name")
       }
-    case  SwitchToNewAPI( clientId: String, clientSecret:String, code:String, redirectUri:Option[String]) =>
-      SlackApiClient.exchangeOauthForToken(clientId, clientSecret, code, redirectUri).map { token:AccessToken =>
-        self ! NewBlockingApi(token.access_token)
-      }
 
-    case NewBlockingApi(newApiToken:String) =>
-      val newApi = BlockingSlackApiClient(newApiToken, duration)
-      val newState = RtmState(newApi.startRealTimeMessageSession())
-      val newSlackActor = SlackRtmConnectionActor(newApiToken, newState, duration)
-      slackActor ! PoisonPill
+    case TeamName =>
+     // val apiClient = BlockingSlackApiClient(apiKey, duration)
+      val teamInfo: JsValue = apiClient.getTeamInfo()
+      val teamNameResponse = TeamNameResponse ( (teamInfo \ "team" \ "id").as[String],(teamInfo\ "team" \ "name").as[String], (teamInfo\ "team" \ "domain").as[String])
+      sender() ! teamNameResponse
 
-      context.become(receiveStarted(newSlackActor, newApi, listeners, channelUserListen, reverseChanelUserListen))
     case _ =>
       log.error("Unknown message")
+
   }
+
 }
 
 
 object SlackAPIActor {
-  def props( configuration: Configuration)(implicit ec: ExecutionContext) : Props = Props(classOf[SlackAPIActor], configuration)
+  def props( apiKey:String /*, configuration: Configuration */) : Props = Props(classOf[SlackAPIActor], apiKey /*, configuration */ )
   sealed trait SlackAPIMessage extends BotMessages
   case class SendMessage(channelID: String, text: String) extends SlackAPIMessage
   case class SendAttachment(channelID: String, text:String, attachments: Seq[Attachment]) extends SlackAPIMessage
@@ -168,10 +158,13 @@ object SlackAPIActor {
   case class RemoveListener(actor:ActorRef)extends SlackAPIMessage
   case class JoinAndCreate(channelName:String)extends SlackAPIMessage
   case class InviteUser(channelName:String, userID:String) extends SlackAPIMessage
-  case class NewBlockingApi( apiToken: String) extends SlackAPIMessage
-  case class SwitchToNewAPI( clientId: String, clientSecret:String, code:String, redirectURI:Option[String])
+//  case class NewBlockingApi( apiToken: String) extends SlackAPIMessage
+//  case class SwitchToNewAPI( clientId: String, clientSecret:String, code:String, redirectURI:Option[String])
 
   case object Channels extends SlackAPIMessage
   case object Users extends SlackAPIMessage
+  case object TeamName extends SlackAPIMessage
+  case class TeamNameResponse( id:String, name:String, domain:String)
 
 }
+

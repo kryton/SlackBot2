@@ -9,8 +9,8 @@ import slack.rtm.SlackAPIActor
 class ActorNamesModule extends AbstractModule with AkkaGuiceSupport {
 
   def configure(): Unit = {
-    bindActor[SlackAPIActor]("SlackAPI-actor")
+    //bindActor[SlackAPIActor]("SlackAPI-actor")
     bindActor[DRActor]("DR-actor")
-    bindActor[ShoppingBotActor]("ShoppingBot-actor")
+   // bindActor[ShoppingBotActor]("ShoppingBot-actor")
   }
 }

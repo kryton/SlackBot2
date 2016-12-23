@@ -14,9 +14,7 @@ import scala.concurrent.{ExecutionContext, Future}
   */
 
 
-case class SlackSession(
-                      token: String,
-                      scope: String)
+case class SlackSession( teamId: String,                      token: String)
 
 class SlackSessionRepo  @Inject()(protected val dbConfigProvider: DatabaseConfigProvider) {
   val dbConfig = dbConfigProvider.get[JdbcProfile]
@@ -25,38 +23,38 @@ class SlackSessionRepo  @Inject()(protected val dbConfigProvider: DatabaseConfig
   import dbConfig.driver.api._
 
   val tableQuery = TableQuery[SlackSessionTable]
-  class SlackSessionTable(tag: Tag) extends Table[SlackSession](tag, "SlackSession") {
+  class SlackSessionTable(tag: Tag) extends Table[SlackSession](tag, "SLACKSESSION") {
+    def teamId = column[String]("teamId")
     def token = column[String]("token")
-    def scope = column[String]("scope")
 
-    def * = (token,scope) <> ((SlackSession.apply _).tupled, SlackSession.unapply)
+    def * = (teamId, token) <> ((SlackSession.apply _).tupled, SlackSession.unapply)
   }
 
   def truncate() = {
     db.run(tableQuery.delete)
   }
 
-
   def all():Future[List[SlackSession]] = {
     db.run(tableQuery.to[List].result)
   }
 
 
-  def find(token: String): Future[Option[SlackSession]] = {
+  def findByToken(token: String): Future[Option[SlackSession]] = {
     db.run( tableQuery.filter(_.token === token).result.headOption)
   }
-
-
+  def findByTeamId(id: String): Future[Option[SlackSession]] = {
+    db.run( tableQuery.filter(_.teamId === id).result.headOption)
+  }
 
   /**
     * Delete a specific entity by id. If successfully completed return 1. otherwise 0
     */
-  def delete(token: String): Future[Int] = db.run( tableQuery.filter(_.token === token ).delete )
+  def deleteByToken(token: String): Future[Int] = db.run( tableQuery.filter(_.token === token ).delete )
+  def deleteByTeamId(id: String): Future[Int] = db.run( tableQuery.filter(_.teamId === id ).delete )
 
-  def create(token: String, scope: String): SlackSession = {
-    val newObj = SlackSession(token=token, scope=scope)
+  def create(teamId:String, token: String): SlackSession = {
+    val newObj = SlackSession(teamId = teamId, token=token)
     tableQuery += newObj
-
     newObj
   }
 }

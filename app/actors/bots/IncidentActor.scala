@@ -4,7 +4,7 @@ import javax.inject.{Inject, Named}
 
 import actors.BotMessages.{BotMessages, Start}
 import actors.systems
-import actors.systems.ServiceManagerActor
+import actors.systems.{ServiceManagerActor, SlackTeamManager}
 import akka.actor.{Actor, ActorLogging, ActorRef, Props}
 import akka.pattern.ask
 import akka.util.Timeout
@@ -19,7 +19,7 @@ import scala.concurrent.duration._
 /**
   * Created by iholsman on 11/7/2016.
   */
-class IncidentActor @Inject()(@Named("SlackAPI-actor") slackAPIActor: ActorRef,
+class IncidentActor @Inject()(@Named("SlackTeamManager-actor") slackTeamManager: ActorRef,
                               @Named("ServiceManager-actor") serviceManagerActor: ActorRef,
                               configuration: Configuration)(implicit ec: ExecutionContext) extends Actor with ActorLogging {
   implicit val timeout: Timeout = 5.seconds
@@ -31,7 +31,9 @@ class IncidentActor @Inject()(@Named("SlackAPI-actor") slackAPIActor: ActorRef,
   override def receive: Receive = {
 
     case Start =>
-      slackAPIActor ! SlackAPIActor.AddListener(self)
+      (slackTeamManager?SlackTeamManager.GetSlackByTeam("T12345")).mapTo[ActorRef].map { slackAPIActor =>
+        slackAPIActor ! SlackAPIActor.AddListener(self)
+      }
       serviceManagerActor ! Start
       log.info("Incident Started")
     case r:SlackAPIActor.RecvMessage => parseMessage(r)
@@ -59,7 +61,10 @@ class IncidentActor @Inject()(@Named("SlackAPI-actor") slackAPIActor: ActorRef,
               callback_id = Some(s"IM-Open-${incident.IncidentID}"), actions = actionField)
           }
           log.error("Sending it to Slack")
-          slackAPIActor ! SlackAPIActor.SendAttachment( channelID = mainChannelID, text = "Open P1/P2 Incidents", attachments = attachments)
+            (slackTeamManager?SlackTeamManager.GetSlackByTeam("T12345")).mapTo[ActorRef].map { slackAPIActor =>
+              slackAPIActor ! SlackAPIActor.SendAttachment( channelID = mainChannelID, text = "Open P1/P2 Incidents", attachments = attachments)
+            }
+
       }
 
       log.error("TICK")
@@ -72,12 +77,22 @@ class IncidentActor @Inject()(@Named("SlackAPI-actor") slackAPIActor: ActorRef,
       msg.text match {
         case IMpattern(incident) =>
           (serviceManagerActor ? ServiceManagerActor.Incident(incident)).mapTo[Option[IncidentDetail]].map {
-            case None =>  slackAPIActor ! SlackAPIActor.SendMessage(msg.channelID, s"$incident - Incident Not found")
+            case None =>
+              (slackTeamManager?SlackTeamManager.GetSlackByTeam("T12345")).mapTo[ActorRef].map { slackAPIActor =>
+                slackAPIActor ! SlackAPIActor.SendMessage(msg.channelID, s"$incident - Incident Not found")
+              }
+
             case Some(i: IncidentDetail) =>
-              slackAPIActor ! SlackAPIActor.SendMessage(msg.channelID, s"${i.IncidentID} - ${i.Title}\n${i.Description.foldLeft("")(_+_.getOrElse("")+"\n")}")
+              (slackTeamManager?SlackTeamManager.GetSlackByTeam("T12345")).mapTo[ActorRef].map { slackAPIActor =>
+                slackAPIActor ! SlackAPIActor.SendMessage(msg.channelID, s"${i.IncidentID} - ${i.Title}\n${i.Description.foldLeft("")(_+_.getOrElse("")+"\n")}")
+              }
           }
 
-        case _ => slackAPIActor ! SlackAPIActor.SendMessage(msg.channelID, s"I don't understand -  ${msg.text}")
+        case _ =>
+          (slackTeamManager?SlackTeamManager.GetSlackByTeam("T12345")).mapTo[ActorRef].map { slackAPIActor =>
+            slackAPIActor ! SlackAPIActor.SendMessage(msg.channelID, s"I don't understand -  ${msg.text}")
+          }
+
       }
     }
   }

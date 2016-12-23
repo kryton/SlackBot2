@@ -1,0 +1,18 @@
+
+@(users: Seq[slack.models.User])
+
+@main("config") {
+
+  <h1>ADMIN ONLY</h1>
+  <h2>Slack Users - TODO: MAKE ADMIN ONLY</h2>
+
+    <ul>
+
+    @users.map { user =>
+      <li>@user.id @user.name</li>
+    }
+
+    </ul>
+
+
+}

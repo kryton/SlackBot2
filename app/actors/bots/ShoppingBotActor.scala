@@ -16,22 +16,23 @@ import utils.{Cart, DRAPI}
 
 import scala.concurrent.ExecutionContext
 import scala.concurrent.duration._
-
+import scala.concurrent.ExecutionContext.Implicits.global
 /**
   * Created by iholsman on 11/7/2016.
   */
-class ShoppingBotActor @Inject()(@Named("SlackAPI-actor") slackAPIActor: ActorRef,
-                                 @Named("DR-actor") drActor: ActorRef,
-                                 configuration: Configuration)(implicit ec: ExecutionContext) extends Actor with ActorLogging {
+class ShoppingBotActor( slackAPIActor: ActorRef, drActor: ActorRef ) extends Actor with ActorLogging {
 
   // TODO convert this into a 'bot manager' with individual sessions handled by individual bots.
   implicit val timeout: Timeout = 15.seconds
 
+/*
 
   override def preStart(): Unit = {
+
     super.preStart()
     self ! Start
   }
+  */
   override def receive: Receive = {
 
     case Start =>
@@ -90,14 +91,11 @@ class ShoppingBotActor @Inject()(@Named("SlackAPI-actor") slackAPIActor: ActorRe
 
 
 object ShoppingBotActor {
-  def props( slackAPIActor: ActorRef,
-            drActor: ActorRef,
-            configuration: Configuration)(implicit ec: ExecutionContext) : Props =
-    Props(classOf[ShoppingBotActor], slackAPIActor, drActor, configuration)
+  def props( slackAPIActor: ActorRef,  drActor: ActorRef          ) : Props =    Props(classOf[ShoppingBotActor], slackAPIActor, drActor )
 
   sealed trait ShoppingBotMessage extends BotMessages
 
-  case class Config(friendlyName: String)
+  case class Config(friendlyName: String) extends ShoppingBotMessage
 
 }
 
