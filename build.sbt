@@ -12,8 +12,8 @@ resolvers +=
   Resolver.url("Objectify Play Repository", url("http://deadbolt.ws/releases/"))(Resolver.ivyStylePatterns)
 
 
-val akkaVersion = "2.4.14"
-val akkaHttpVersion = "10.0.0"
+val akkaVersion = "2.4.16"
+val akkaHttpVersion = "10.0.1"
 
 
 libraryDependencies ++= Seq( jdbc,  cache , ws, filters,

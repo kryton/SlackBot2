@@ -7,6 +7,7 @@ import play.api.libs.concurrent.AkkaGuiceSupport
 import akka.actor.{ActorRef, ActorSystem}
 import com.google.inject.AbstractModule
 import models.SlackSessionRepo
+import play.api.Logger
 import play.api.libs.concurrent.AkkaGuiceSupport
 
 import scala.concurrent.duration._
@@ -28,6 +29,10 @@ class SlackTeamManagerLoader @Inject()(val system: ActorSystem,
                                        @Named("DR-actor") val drActor: ActorRef,
                                        slackSessionRepo: SlackSessionRepo)(implicit ec: ExecutionContext)
 {
+  val logger = Logger.logger
+  logger.warn("Slack Startup")
+  //slackSessionRepo.createIt()
+
   teamManagerActor ! SlackTeamManager.Load(slackSessionRepo,drActor)
 
 }

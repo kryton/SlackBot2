@@ -1,11 +1,22 @@
-@(teams: Seq[String])
+@(teams: Seq[String],sessions:List[models.SlackSession])
 
 @main("config") {
 
 <h1>ADMIN ONLY</h1>
 <h2>Slack List of teams - TODO: MAKE ADMIN ONLY</h2>
+    <ul>
+
     @teams.map { team =>
-        <li>@team</li>
+        <li>@team - <a href="@routes.SlackController.slackChannels(team)">Channels</a> <a href="@routes.SlackController.slackUsers(team)">Users</a></li>
     }
 
+    </ul>
+<h2>Stored in the DB</h2>
+    <ul>
+
+
+    @sessions.map { session =>
+      <li>@session.teamId</li>
+    }
+    </ul>
 }

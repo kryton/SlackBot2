@@ -124,7 +124,6 @@ trait JsonDRMarshallers extends SprayJsonSupport with DefaultJsonProtocol {
   implicit val categoryMinimumRespFmt = jsonFormat2(CategoryMinimumResp)
   implicit val categoryResponseFmt = jsonFormat2(CategoryResponse)
 
-
 }
 
 object JsonDRMarshallers extends JsonDRMarshallers

@@ -40,7 +40,7 @@ class SlackTeamManager @Inject()(implicit ec: ExecutionContext) extends Actor wi
 
   def receive_running(slackSessionRepo: SlackSessionRepo, sessionsActor: Map[String, SessionEntry], actorSession: Map[ActorRef, String], slackActorSession: Map[ActorRef, String]): Receive = {
     case SlackTeamManager.Load(repo, drActor) =>
-      repo.all.map {
+      repo.all().map {
         sessions => sessions.foreach(session => self ! SlackTeamManager.ConnectShopperToSlack(session.token, drActor))
       }
     case SlackTeamManager.ConnectShopperToSlack(token: String, drActor: ActorRef) =>
@@ -101,13 +101,14 @@ class SlackTeamManager @Inject()(implicit ec: ExecutionContext) extends Actor wi
       log.info("OpenSessions - Keys")
       sender() ! keys
 
-    case _ => log.info("Unknown Message SlackTeamManager")
+    case _ => log.info("Unknown Message SlackTeamManager-Main Loop")
   }
 
   case class SessionEntry(slackEntry: ActorRef, botEntry: ActorRef)
 
 
 }
+
 
 
 object SlackTeamManager {
@@ -128,5 +129,23 @@ object SlackTeamManager {
   protected case class TeamNameInfo(slackAPIActor: ActorRef, drActor: ActorRef, token: String, TeamInfo: TeamNameResponse)
 
   case object OpenSessions extends SlackTeamMessage
+
+  case class ActionKeyPair( name:String, value:String)
+  case class Team( id:String, domain:String)
+  case class SlackChannel( id:String, name:String)
+  case class SlackUser( id:String, name:String)
+  case class Payload( actions:Seq[ActionKeyPair],
+                      callback_id:String,
+                      team: Team,
+                      channel: SlackChannel,
+                      user:SlackUser,
+                      action_ts: String,
+                      message_ts:String,
+                      attachment_id: String,
+                      token:String,
+                      // original_message:Option[Unit],
+                      response_url:String
+
+                    )
 
 }

@@ -20,3 +20,5 @@ dist
 /play
 /play.cmd
 /conf/generated.keystore
+/sessions.h2.*.db
+/jsonTest.*

@@ -3,45 +3,109 @@ package controllers
 import javax.inject._
 
 import actors.BotMessages.{End, GetConfig, Start}
-import actors.systems.{ServiceManagerActor, SlackTeamManager}
+import actors.systems.{ SlackTeamManager}
 import actors.systems.SlackTeamManager.SlackTeamMessage
-import scala.util.{Failure, Success}
+
 import akka.actor.{ActorRef, ActorSystem}
+import akka.http.scaladsl.marshallers.sprayjson.SprayJsonSupport
+import akka.http.scaladsl.model.HttpEntity
+import akka.http.scaladsl.unmarshalling.Unmarshal
 import akka.pattern.ask
+import akka.stream.ActorMaterializer
 import akka.util.Timeout
+import models.SlackSessionRepo
 import play.api.{Configuration, Logger}
 import play.api.libs.json.JsValue
 import play.api.mvc._
 import slack.api.{AccessToken, SlackApiClient}
-import slack.models.Channel
 import slack.rtm.SlackAPIActor
-import utils.IncidentDetail
+import spray.json.DefaultJsonProtocol
 
 import scala.concurrent.duration._
 import scala.concurrent.{ExecutionContext, Future}
 
+trait JsonSlackResponseMarshallers extends SprayJsonSupport with DefaultJsonProtocol {
+  implicit val actionKeyPairFmt = jsonFormat2(SlackTeamManager.ActionKeyPair)
+  implicit val teamFmt = jsonFormat2(SlackTeamManager.Team)
+  implicit val channelFmt = jsonFormat2(SlackTeamManager.SlackChannel)
+  implicit val userFmt = jsonFormat2(SlackTeamManager.SlackUser)
+  implicit val payloadFmt = jsonFormat10(SlackTeamManager.Payload)
+}
+
+
+object JsonSlackResponseMarshallers extends JsonSlackResponseMarshallers
+
 @Singleton
 class SlackController @Inject()(configuration: Configuration,
                                 @Named("SlackTeamManager-actor") slackTeamManager: ActorRef,
-                                @Named("DR-actor") drActor: ActorRef
+                                @Named("DR-actor") drActor: ActorRef,
+                                slackSessionRepo: SlackSessionRepo
                            )(implicit ec: ExecutionContext, system:ActorSystem) extends Controller {
 
   implicit val timeout: Timeout = 5.seconds
+  implicit val materializer = ActorMaterializer()
+  import akka.http.scaladsl.marshallers.sprayjson.SprayJsonSupport
+  import  JsonSlackResponseMarshallers._
 
-  def actionEndpoint = Action { request =>
-    val body: AnyContent = request.body
-    val jsonBody:Option[JsValue] = body.asJson
-    jsonBody match {
-      case Some(json:JsValue) =>
-        println(json.toString())
-        val challenge =  (json \ "challenge").as[String]
-        Ok(challenge)
-      case None =>
-        BadRequest("Json Body not found")
+  val logger = play.api.Logger.logger
+  def actionEndpoint = Action.async { request =>
+
+    request.contentType match {
+      case Some(ct) =>
+        val body: AnyContent = request.body
+       // logger.info(s"CT=$ct - Action Endpoint ${request.uri} - $body")
+        ct match {
+          case "application/json" =>
+            val jsonBody:Option[JsValue] = body.asJson
+
+            jsonBody match {
+              case Some(json:JsValue) =>
+                println(json.toString())
+                val challenge =  (json \ "challenge").as[String]
+                Future(Ok(challenge))
+              case None =>
+                Future(BadRequest("Json Body not found"))
+            }
+          case "application/x-www-form-urlencoded" =>
+            request.body.asFormUrlEncoded match {
+              case Some(values) =>
+                values.get("payload") match {
+                  case Some(payloadValues) =>
+                    payloadValues.headOption match {
+                      case Some(payloadS) =>
+
+                        val result: Future[SlackTeamManager.Payload] = Unmarshal[String](payloadS).to[SlackTeamManager.Payload]
+
+                        result.map { payload:SlackTeamManager.Payload =>
+                          val validation: String = configuration.getString("slack.config.client.token").getOrElse("none")
+                          if ( validation != payload.token) {
+                            BadRequest("Invalid Payload. Token is not what I expected")
+                          } else {
+                            Ok("{\n  \"response_type\": \"ephemeral\",\n  \"replace_original\": false,\n  \"text\": \"Received the Test Callback.\"\n}").as("application/json")
+                          }
+                        } recover {
+                          case fail =>
+                            logger.error(s"Attempting to Unpack Json - ${fail.getMessage}")
+                            BadRequest("Invalid Payload. Can't unpack")
+                        }
+
+                      case None =>  Future(BadRequest("Missing Payload value"))
+                    }
+                  case None => Future(BadRequest("Missing Payload"))
+                }
+               // BadRequest("TBD")
+              case None => Future(BadRequest("No parameters found (expecting payload)"))
+            }
+
+          case _ => Future(BadRequest(s"Unknown content type $ct"))
+        }
+
+      case None => Future(BadRequest (" Missing Content Type"))
     }
+
   }
 
-  def actionRedirect(code:Option[String], state:Option[String]) = Action.async { request =>
+  def actionRedirect(code:Option[String], state:Option[String]): Action[AnyContent] = Action.async { request =>
 
    code match {
      case Some(codeS) =>
@@ -78,7 +142,8 @@ class SlackController @Inject()(configuration: Configuration,
   def slackChannels(teamId:String) = Action.async {
     getSlackActor(teamId).map { slackAPIActor =>
       (slackAPIActor ? SlackAPIActor.Channels).mapTo[Seq[slack.models.Channel]].map { message =>
-        Ok(message.foldLeft("")((x: String, y: Channel) => x + s"${y.id}/${y.name}\n"))
+        Ok( views.html.slackDebug.getChannels( message))
+       // Ok(message.foldLeft("")((x: String, y: Channel) => x + s"${y.id}/${y.name}\n"))
       }
     }.flatMap(identity)
   }
@@ -100,8 +165,11 @@ class SlackController @Inject()(configuration: Configuration,
   }
   def slackList() = Action.async{
     (slackTeamManager ? SlackTeamManager.OpenSessions).mapTo[Seq[String]].map{ teams =>
-      Ok( views.html.slackDebug.openSessions( teams))
-    }
+      slackSessionRepo.all().map { sessions:List[models.SlackSession] =>
+        Ok( views.html.slackDebug.openSessions( teams,sessions))
+      }
+
+    }.flatMap(identity)
   }
 
   def getSlackActor( teamId:String): Future[ActorRef] =  {
@@ -110,3 +178,4 @@ class SlackController @Inject()(configuration: Configuration,
   }
 
 }
+
