@@ -88,18 +88,26 @@ class SlackTeamManager @Inject()(implicit ec: ExecutionContext) extends Actor wi
       }
     case GetByTeam(teamId: String) =>
       sessionsActor.get(teamId) match {
-        case Some(actorRef) => sender() ! actorRef.botEntry
+        case Some(sessionEntry) => sender() ! sessionEntry.botEntry
         case None => log.info(s"TeamID $teamId not found")
       }
     case GetSlackByTeam(teamId: String) =>
       sessionsActor.get(teamId) match {
-        case Some(actorRef) => sender() ! actorRef.slackEntry
+        case Some(sessionEntry) => sender() ! sessionEntry.slackEntry
         case None => log.info(s"TeamID $teamId not found")
       }
     case OpenSessions =>
       val keys: Seq[String] = sessionsActor.keys.toSeq
       log.info("OpenSessions - Keys")
       sender() ! keys
+    case  p:Payload =>
+      sessionsActor.get(p.team.id) match {
+      case Some(sessionEntry) =>
+        sessionEntry.botEntry.forward(p)
+      case None =>
+        sender() ! PayloadResponse(worked = false,responseTypeEphermal ,replace_original = false, text="Team Not found")
+        log.info(s"TeamID ${p.team.id} not found")
+    }
 
     case _ => log.info("Unknown Message SlackTeamManager-Main Loop")
   }
@@ -145,7 +153,8 @@ object SlackTeamManager {
                       token:String,
                       // original_message:Option[Unit],
                       response_url:String
-
                     )
+  case class PayloadResponse( worked:Boolean, response_type:String,replace_original:Boolean, text:String)
 
+  val responseTypeEphermal:String = "ephermal"
 }

@@ -3,9 +3,8 @@ package controllers
 import javax.inject._
 
 import actors.BotMessages.{End, GetConfig, Start}
-import actors.systems.{ SlackTeamManager}
-import actors.systems.SlackTeamManager.SlackTeamMessage
-
+import actors.systems.SlackTeamManager
+import actors.systems.SlackTeamManager.{PayloadResponse, SlackTeamMessage}
 import akka.actor.{ActorRef, ActorSystem}
 import akka.http.scaladsl.marshallers.sprayjson.SprayJsonSupport
 import akka.http.scaladsl.model.HttpEntity
@@ -79,16 +78,25 @@ class SlackController @Inject()(configuration: Configuration,
                         result.map { payload:SlackTeamManager.Payload =>
                           val validation: String = configuration.getString("slack.config.client.token").getOrElse("none")
                           if ( validation != payload.token) {
-                            BadRequest("Invalid Payload. Token is not what I expected")
+                            Future(BadRequest("Invalid Payload. Token is not what I expected"))
                           } else {
-                            Ok("{\n  \"response_type\": \"ephemeral\",\n  \"replace_original\": false,\n  \"text\": \"Received the Test Callback.\"\n}").as("application/json")
+                            (slackTeamManager ? payload.copy(token="NOTPASSED")).mapTo[PayloadResponse].map { payloadResponse =>
+                              //TODO write this out as a proper JSON message
+                              val jsonMessage= s"{  \"response_type\": \"${payloadResponse.response_type}\",  \"replace_original\": ${payloadResponse.replace_original},  \"text\": \"${payloadResponse.text}\"}"
+                              if ( payloadResponse.worked) {
+                                Ok(jsonMessage).as("application/json")
+                              } else {
+                                Ok(jsonMessage).as("application/json")
+                              }
+                            }
+
                           }
-                        } recover {
+                        }.flatMap(identity) recover {
                           case fail =>
                             logger.error(s"Attempting to Unpack Json - ${fail.getMessage}")
                             BadRequest("Invalid Payload. Can't unpack")
                         }
-
+                    //    Future(Ok(""))
                       case None =>  Future(BadRequest("Missing Payload value"))
                     }
                   case None => Future(BadRequest("Missing Payload"))
@@ -116,7 +124,7 @@ class SlackController @Inject()(configuration: Configuration,
 
        tokenF.map { token: AccessToken =>
          slackTeamManager ! SlackTeamManager.ConnectShopperToSlack(token.access_token, drActor)
-         Logger.logger.warn(s"RCVD Token - ${token.access_token}/${token.scope}")
+         Logger.logger.debug(s"RCVD Token - ${token.access_token}/${token.scope}")
          Ok(s"TBD - Redirect somewhere Token - ${token.access_token}/${token.scope} ")
        }.recover {
          case fail =>

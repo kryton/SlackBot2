@@ -6,6 +6,7 @@ import actors.BotMessages.{BotMessages, Start}
 import actors.systems.DRActor.{ApplyBillingAddress, CategoryDetail, CategoryList, NewUserSessionReply}
 import slack.rtm.SlackAPIActor.AddUserChannelListener
 import actors.systems.DRActor
+import actors.systems.SlackTeamManager.{Payload, PayloadResponse}
 import akka.actor.{Actor, ActorLogging, ActorRef, Props}
 import akka.pattern.ask
 import akka.util.Timeout
@@ -22,23 +23,23 @@ import scala.concurrent.ExecutionContext.Implicits.global
   */
 class ShoppingBotActor( slackAPIActor: ActorRef, drActor: ActorRef ) extends Actor with ActorLogging {
 
-  // TODO convert this into a 'bot manager' with individual sessions handled by individual bots.
   implicit val timeout: Timeout = 15.seconds
 
-/*
 
-  override def preStart(): Unit = {
-
-    super.preStart()
-    self ! Start
-  }
-  */
   override def receive: Receive = {
 
     case Start =>
       slackAPIActor ! SlackAPIActor.AddListener(self)
       drActor ! Start
     case r: SlackAPIActor.RecvMessage => parseMessage(r)
+    case p: Payload =>
+       p.callback_id.split('-').headOption match {
+         case Some(callbackType) =>
+           sender() ! PayloadResponse(worked = true,"{  \"response_type\": \"ephemeral\",  \"replace_original\": false,  \"text\": \"Received the Test Callback (in bot).\"}")
+         case None =>
+           sender() ! PayloadResponse(worked = false,"{  \"response_type\": \"ephemeral\",  \"replace_original\": false,  \"text\": \"Unknown formatting of callback id.\"}")
+       }
+
     case _ => log.error("Unknown message")
   }
 
@@ -63,7 +64,7 @@ class ShoppingBotActor( slackAPIActor: ActorRef, drActor: ActorRef ) extends Act
           val actionField = Seq(ActionField("accept", "Accept", "button", Some("primary")))
           val attachment = Attachment(text = Some("Do you want to accept?"),
             fallback = Some("backup message: code-123456"),
-            callback_id = Some("code-123456"), actions = actionField)
+            callback_id = Some("TEST-TEST"), actions = actionField)
           slackAPIActor ! SlackAPIActor.SendAttachment(msg.channelID, text="Test",attachments = Seq(attachment))
         case msgText if msgText.toLowerCase.contains("categories") =>
 
@@ -73,7 +74,11 @@ class ShoppingBotActor( slackAPIActor: ActorRef, drActor: ActorRef ) extends Act
              slackAPIActor ! SlackAPIActor.SendMessage( msg.channelID, e.left.get.category.displayName)
            } else {
              val categoryList = e.right.get.categories
-             val attachments:Seq[Attachment] = categoryList.map{ cl => Attachment( text = Some(cl.displayName)) }
+             val actionField = Seq(ActionField("select", "Select", "button", Some("primary")))
+             val attachments:Seq[Attachment] = categoryList.map{ cl =>
+               val catId = "CAT-" + cl.uri.split('/').last
+               Attachment( text = Some(cl.displayName), callback_id = Some(catId), actions=actionField)
+             }
              slackAPIActor ! SlackAPIActor.SendAttachment(msg.channelID, text="Categories",attachments = attachments)
            }
 
