@@ -100,6 +100,24 @@ case class CategoryMinimum( uri:String, displayName:String)
 case class CategoryMinimumResp( uri:String,category: Seq[CategoryMinimum])
 case class CategoryResponse( categories:Option[CategoryMinimumResp], category:Option[Category])
 
+case class ProductInCategoryItemPricing( uri:String, formattedListPrice:String, formattedSalePriceWithQuantity:String)
+case class ProductInCategoryItem( uri:String, displayName:String, thumbnailImage:Option[String], pricing:ProductInCategoryItemPricing)
+case class ProductsInCategory( product: Option[Seq[ProductInCategoryItem]], totalResults:Long, totalResultPages:Long )
+case class ProductsInCategoryResp( products: ProductsInCategory )
+
+
+
+case class ProductPricing( uri:String, listPrice:Amount, salePriceWithQuantity:Amount,
+                           formattedListPrice:String, formattedSalePriceWithQuantity:String,
+                           msrpPrice:Amount,  formattedMsrpPrice:String,
+                           listPriceIncludesTax:String)
+case class ProductDetail( uri:String, id:Long, name:String, displayName:String,
+                          shortDescription:Option[String],
+                          longDescription:Option[String],
+                          productType:String, sku:String, pricing:ProductPricing,
+                          thumbnailImage:Option[String], productImage:Option[String])
+case class ProductResp( product: ProductDetail )
+
 trait JsonDRMarshallers extends SprayJsonSupport with DefaultJsonProtocol {
   implicit val tokenFmt = jsonFormat4(Token)
   implicit val amountFmt = jsonFormat2(Amount)
@@ -123,6 +141,15 @@ trait JsonDRMarshallers extends SprayJsonSupport with DefaultJsonProtocol {
   implicit val categoryMinimumFmt = jsonFormat2(CategoryMinimum)
   implicit val categoryMinimumRespFmt = jsonFormat2(CategoryMinimumResp)
   implicit val categoryResponseFmt = jsonFormat2(CategoryResponse)
+
+  implicit val productInCategoryItemPricing = jsonFormat3(ProductInCategoryItemPricing)
+  implicit val productInCategoryItem = jsonFormat4(ProductInCategoryItem)
+  implicit val productsInCategory = jsonFormat3(ProductsInCategory)
+  implicit val productsInCategoryResp = jsonFormat1(ProductsInCategoryResp)
+
+  implicit val productPricing = jsonFormat8(ProductPricing)
+  implicit val productDetail = jsonFormat11(ProductDetail)
+  implicit val productResp = jsonFormat1(ProductResp)
 
 }
 
@@ -271,7 +298,6 @@ class DRAPI(protected val apiKey: String,
   def addItem(token: String, productIds: Seq[String], promoCode: Option[String] = None, quantity: Long = 1L): Future[Option[Cart]] = {
 
     val uri = Uri(s"$url/shoppers/me/carts/active")
-
     val qry = promoCode match {
       case Some(x) => Uri.Query("token" -> token,
         "format" -> "json",
@@ -349,6 +375,73 @@ class DRAPI(protected val apiKey: String,
       }
     }.flatMap(identity)
   }
+
+
+  def getProductsInCategory(catId:Long):Future[Option[ProductsInCategory]] = {
+    val qry: Uri.Query = Uri .Query("apiKey" -> apiKey, "format" -> "json")
+    val uri = Uri(s"$url/shoppers/me/categories/$catId/products")
+
+
+    val request = HttpRequest(HttpMethods.GET, uri = uri.withQuery(qry))
+
+    Http().singleRequest(request).map { response =>
+      response.status match {
+        case StatusCodes.OK =>
+          import akka.http.scaladsl.marshallers.sprayjson.SprayJsonSupport
+
+          val result: Future[ProductsInCategoryResp] = Unmarshal[HttpEntity](response.entity).to[ProductsInCategoryResp]
+
+          val detail:Future[Option[ProductsInCategory]] = result.map { x =>
+            Some(x.products)
+          }
+          result.onFailure {
+            case y =>
+              log.warn(response.entity.toString)
+              log.error(y.getMessage)
+          }
+          detail
+
+        case _ =>
+          log.error(s"URI= ${uri.toString()}")
+          log.error(s"Invalid status code of ${response.status} -${response.entity}")
+          Future(None)
+      }
+    }.flatMap(identity)
+  }
+
+  def getProductDetail(productId:Long):Future[Option[ProductDetail]] = {
+    val qry: Uri.Query = Uri .Query("apiKey" -> apiKey, "format" -> "json")
+    val uri = Uri(s"$url/shoppers/me/products/$productId")
+
+
+    val request = HttpRequest(HttpMethods.GET, uri = uri.withQuery(qry))
+
+    Http().singleRequest(request).map { response =>
+      response.status match {
+        case StatusCodes.OK =>
+          import akka.http.scaladsl.marshallers.sprayjson.SprayJsonSupport
+
+          val result: Future[ProductResp] = Unmarshal[HttpEntity](response.entity).to[ProductResp]
+
+          val detail:Future[Option[ProductDetail]] = result.map { x =>
+            Some(x.product)
+          }
+          result.onFailure {
+            case y =>
+              log.warn(response.entity.toString)
+              log.error(y.getMessage)
+          }
+          detail
+
+        case _ =>
+          log.error(s"URI= ${uri.toString()}")
+          log.error(s"Invalid status code of ${response.status} -${response.entity}")
+          Future(None)
+      }
+    }.flatMap(identity)
+  }
+
+
   def webCheckout(token: String): Future[Option[String]] = {
     val uri = Uri(s"$url/shoppers/me/carts/active/web-checkout")
     //https://dispatch-test.digitalriver.com/v1/shoppers/me/carts/active.drivejson?token=c96"

@@ -62,6 +62,16 @@ class DRActor  @Inject() (configuration: Configuration)(implicit ec: ExecutionCo
         }
         sendBack ! resp
       }
+    case  GetProductsInCategory(id:Long) =>
+      val sendBack = sender
+      drAPI.getProductsInCategory(id).map {  resp:Option[ProductsInCategory] =>
+        sendBack ! resp
+      }
+   case GetProduct(id:Long) =>
+      val sendBack = sender
+      drAPI.getProductDetail(id).map {  resp:Option[ProductDetail] =>
+        sendBack ! resp
+      }
 
     case GetDRUserActor(source, user) => sender ! sessionsActor.get(NewUserSession(source,user))
 
@@ -173,6 +183,8 @@ object DRActor  {
   case class DRForward(source:String, userKey:String, drMessage:DRMessage) extends DRMessage
 
   case class GetDRUserActor(source:String, userKey:String) extends DRMessage
+  case class GetProductsInCategory(id:Long) extends DRMessage
+  case class GetProduct(id:Long) extends DRMessage
   case class GetCategories(id:Option[Long]) extends DRMessage
   case class CategoryDetail(category:Category) extends DRMessage
   case class CategoryList(categories:Seq[CategoryMinimum]) extends DRMessage

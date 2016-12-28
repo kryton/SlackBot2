@@ -3,9 +3,10 @@ package actors.bots
 import javax.inject.{Inject, Named}
 
 import actors.BotMessages.{BotMessages, Start}
+import actors.bots.ShoppingBotActor.{GetCategories, GetProduct, GetProductsInCategory}
 import actors.systems.DRActor.{ApplyBillingAddress, CategoryDetail, CategoryList, NewUserSessionReply}
-import slack.rtm.SlackAPIActor.AddUserChannelListener
-import actors.systems.DRActor
+import slack.rtm.SlackAPIActor.{AddUserChannelListener, SendMessage}
+import actors.systems.{DRActor, SlackTeamManager}
 import actors.systems.SlackTeamManager.{Payload, PayloadResponse}
 import akka.actor.{Actor, ActorLogging, ActorRef, Props}
 import akka.pattern.ask
@@ -13,9 +14,9 @@ import akka.util.Timeout
 import play.api.Configuration
 import slack.models.{ActionField, Attachment}
 import slack.rtm.SlackAPIActor
-import utils.{Cart, DRAPI}
+import utils._
 
-import scala.concurrent.ExecutionContext
+import scala.concurrent.{ExecutionContext, Future}
 import scala.concurrent.duration._
 import scala.concurrent.ExecutionContext.Implicits.global
 /**
@@ -33,14 +34,125 @@ class ShoppingBotActor( slackAPIActor: ActorRef, drActor: ActorRef ) extends Act
       drActor ! Start
     case r: SlackAPIActor.RecvMessage => parseMessage(r)
     case p: Payload =>
-       p.callback_id.split('-').headOption match {
-         case Some(callbackType) =>
-           sender() ! PayloadResponse(worked = true,"{  \"response_type\": \"ephemeral\",  \"replace_original\": false,  \"text\": \"Received the Test Callback (in bot).\"}")
-         case None =>
-           sender() ! PayloadResponse(worked = false,"{  \"response_type\": \"ephemeral\",  \"replace_original\": false,  \"text\": \"Unknown formatting of callback id.\"}")
-       }
+      val bits = p.callback_id.split("-",2)
 
+       bits.headOption match {
+         case Some(callbackType) =>
+            callbackType match {
+              case "TEST" =>
+                sender() ! testCallback(bits.last, payload = p)
+              case "CAT" =>
+                sender() ! categoryCallback(bits.last, payload = p)
+
+              case p:String =>
+                sender() ! PayloadResponse(worked=false,response_type = SlackTeamManager.responseTypeEphermal, replace_original = false, text=s"unknown callback $p" )
+            }
+
+         case None =>
+           sender() ! PayloadResponse(worked = false,  response_type = SlackTeamManager.responseTypeEphermal, replace_original =false, text="Unknown formatting of callback id.")
+       }
+    case  GetCategories(channelID:String, catId:Option[Long]) => getCategories(channelID,catId)
+    case  GetProductsInCategory(channelId:String, catId:Long) => getProductInCategory(channelId,catId)
+    case  GetProduct(channelId:String, productId:Long) => getProduct(channelId,productId)
     case _ => log.error("Unknown message")
+  }
+
+  protected def testCallback( callback:String, payload:Payload) : PayloadResponse = {
+    PayloadResponse(worked = true, response_type = SlackTeamManager.responseTypeEphermal, replace_original =false, text="Received the Test Callback (in bot1).")
+  }
+  protected def productsInCategoryCallback( callback:String, payload:Payload) : PayloadResponse = {
+    try {
+      val num = callback.toLong
+      self ! GetProductsInCategory(payload.channel.id,num)
+      PayloadResponse(worked = true, response_type = SlackTeamManager.responseTypeEphermal, replace_original =false, text=s"Received the productsInCategoryCallback(in $callback).")
+    } catch {
+      case e:NumberFormatException =>
+        PayloadResponse(worked = false, response_type = SlackTeamManager.responseTypeEphermal, replace_original =false, text=s"invalid callback $callback.")
+    }
+
+  }
+  protected def categoryCallback( callback:String, payload:Payload) : PayloadResponse = {
+    try {
+      val catId = callback.toLong
+      payload.actions.headOption match {
+        case Some(action) => action.value match {
+          case "CATPROD" =>
+            self ! GetProductsInCategory(payload.channel.id,catId)
+          case _ => self ! GetCategories(payload.channel.id,Some(catId))
+        }
+        case None => self ! GetCategories(payload.channel.id,Some(catId))
+      }
+
+    } catch {
+      case e:NumberFormatException =>
+        self ! GetCategories(payload.channel.id,None)
+    }
+
+
+    PayloadResponse(worked = true, response_type = SlackTeamManager.responseTypeEphermal, replace_original =false, text=s"Received the Test Callback (in $callback).")
+  }
+
+  protected def getCategories(channelID:String, catId:Option[Long]): Future[Unit] = {
+    log.info(s"GetCategories $channelID $catId")
+    (drActor ? DRActor.GetCategories(catId)).mapTo[Either[CategoryDetail,CategoryList]].map { e: Either[CategoryDetail, CategoryList] =>
+      if ( e.isLeft) {
+        val catDetail = e.left.get.category
+      //  slackAPIActor ! SlackAPIActor.SendMessage( channelID, catDetail.displayName)
+        val actionField = Seq(ActionField("products","Products","button",Some("primary"), value=Some(s"CATPROD") ))
+        val attachment = Attachment( title = Some(catDetail.displayName), text = catDetail.shortDescription,callback_id = Some(s"CAT-${catDetail.id}"), actions=actionField, image_url = catDetail.thumbnailImage)
+        slackAPIActor ! SlackAPIActor.SendAttachment(channelID, text=catDetail.displayName,attachments = Seq(attachment))
+      } else {
+        val categoryList = e.right.get.categories
+
+        val attachments:Seq[Attachment] = categoryList.map{ cl =>
+          val id = cl.uri.split('/').last
+          val catId = s"CAT-$id"
+          val prodId = s"CATPROD-$id"
+
+          val actionField = Seq(
+            ActionField("select", "Detail", "button", Some("primary"), value=Some("CAT")),
+            ActionField("products", "Products", "button", Some("default"), value=Some("CATPROD"))
+          )
+
+          Attachment( text = Some(cl.displayName),  callback_id = Some(catId),  actions=actionField)
+        }
+        slackAPIActor ! SlackAPIActor.SendAttachment(channelID, text="Categories",attachments = attachments)
+      }
+    }
+  }
+
+  protected def getProductInCategory(channelID:String, catId:Long): Future[Unit] = {
+    log.info(s"getProductInCategory $channelID $catId")
+    (drActor ? DRActor.GetProductsInCategory(catId)).mapTo[Option[ProductsInCategory]].map { e: Option[ProductsInCategory] =>
+      e match {
+        case Some( productsInCategory) =>
+          productsInCategory.product match {
+            case None => slackAPIActor ! SendMessage(channelID, s"I can't find any products in category $catId")
+            case Some(products:Seq[ProductInCategoryItem]) =>
+
+              val attachments:Seq[Attachment] = products.map { productDetail: ProductInCategoryItem =>
+                Attachment(title = Some(productDetail.displayName), text = Some(productDetail.pricing.formattedListPrice), thumb_url = productDetail.thumbnailImage )
+              }
+              slackAPIActor ! SlackAPIActor.SendAttachment(channelID, text = "Products In Category", attachments = attachments)
+          }
+        case None => slackAPIActor ! SendMessage(channelID,s"I can't find any products in category $catId")
+      }
+    }
+  }
+  protected def getProduct(channelID:String, productId:Long): Future[Unit] = {
+    log.info(s"getProduct $channelID $productId")
+    (drActor ? DRActor.GetProduct(productId)).mapTo[Option[ProductDetail]].map { e: Option[ProductDetail] =>
+      e match {
+        case Some( productDetail ) =>
+            val attachments = Seq(
+                Attachment(title = Some(productDetail.displayName), text = productDetail.longDescription),
+                Attachment( text = Some(productDetail.pricing.formattedListPrice), image_url = productDetail.productImage)
+            )
+
+              slackAPIActor ! SlackAPIActor.SendAttachment(channelID, text = productDetail.displayName, attachments = attachments)
+        case None => slackAPIActor ! SendMessage(channelID,s"I can't find any products $productId")
+      }
+    }
   }
 
   protected def parseMessage(msg: SlackAPIActor.RecvMessage): Unit = {
@@ -66,23 +178,8 @@ class ShoppingBotActor( slackAPIActor: ActorRef, drActor: ActorRef ) extends Act
             fallback = Some("backup message: code-123456"),
             callback_id = Some("TEST-TEST"), actions = actionField)
           slackAPIActor ! SlackAPIActor.SendAttachment(msg.channelID, text="Test",attachments = Seq(attachment))
-        case msgText if msgText.toLowerCase.contains("categories") =>
+        case msgText if msgText.toLowerCase.contains("categories") =>  getCategories(msg.channelID, None)
 
-          (drActor ? DRActor.GetCategories(None)).mapTo[Either[CategoryDetail,CategoryList]].map { e: Either[CategoryDetail, CategoryList] =>
-            log.info("GetCategories - Got Response!")
-           if ( e.isLeft) {
-             slackAPIActor ! SlackAPIActor.SendMessage( msg.channelID, e.left.get.category.displayName)
-           } else {
-             val categoryList = e.right.get.categories
-             val actionField = Seq(ActionField("select", "Select", "button", Some("primary")))
-             val attachments:Seq[Attachment] = categoryList.map{ cl =>
-               val catId = "CAT-" + cl.uri.split('/').last
-               Attachment( text = Some(cl.displayName), callback_id = Some(catId), actions=actionField)
-             }
-             slackAPIActor ! SlackAPIActor.SendAttachment(msg.channelID, text="Categories",attachments = attachments)
-           }
-
-          }
         case msgText if msgText.toLowerCase.contains("cart") => {}
         case msgText if msgText.toLowerCase.contains("addzip") => {}
         case msgText if msgText.toLowerCase.contains("additem") => {}
@@ -91,7 +188,6 @@ class ShoppingBotActor( slackAPIActor: ActorRef, drActor: ActorRef ) extends Act
       }
     }
   }
-
 }
 
 
@@ -101,7 +197,9 @@ object ShoppingBotActor {
   sealed trait ShoppingBotMessage extends BotMessages
 
   case class Config(friendlyName: String) extends ShoppingBotMessage
-
+  case class GetCategories(channelId:String, catId:Option[Long]) extends ShoppingBotMessage
+  case class GetProductsInCategory(channelId:String, catId:Long) extends ShoppingBotMessage
+  case class GetProduct(channelId:String, productId:Long) extends ShoppingBotMessage
 }
 
 class ShoppingBotActorUser (slackAPIActor: ActorRef,
@@ -187,8 +285,6 @@ class ShoppingBotActorUser (slackAPIActor: ActorRef,
                     slackAPIActor ! SlackAPIActor.SendMessage(msg.channelID, "Something went wrong.")
                 }
               } else {
-
-                // slackAPIActor ! SlackAPIActor.SendMessage(msg.channel, "I don't understand that")
               }
             }
           }
@@ -199,4 +295,5 @@ class ShoppingBotActorUser (slackAPIActor: ActorRef,
 }
 object ShoppingBotActorUser {
   def props(slackAPIActor:ActorRef, drActorUser:ActorRef, source:String, userKey:String)(implicit ec: ExecutionContext) : Props = Props(classOf[ShoppingBotActorUser], slackAPIActor, drActorUser, source,userKey)
+
 }

@@ -82,7 +82,7 @@ class SlackController @Inject()(configuration: Configuration,
                           } else {
                             (slackTeamManager ? payload.copy(token="NOTPASSED")).mapTo[PayloadResponse].map { payloadResponse =>
                               //TODO write this out as a proper JSON message
-                              val jsonMessage= s"{  \"response_type\": \"${payloadResponse.response_type}\",  \"replace_original\": ${payloadResponse.replace_original},  \"text\": \"${payloadResponse.text}\"}"
+                              val jsonMessage= s"""{ \"response_type\": \"${payloadResponse.response_type}\", \"replace_original\": ${payloadResponse.replace_original}, \"text\": \"${payloadResponse.text}\" }"""
                               if ( payloadResponse.worked) {
                                 Ok(jsonMessage).as("application/json")
                               } else {
